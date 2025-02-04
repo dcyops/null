@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+[ "$#" -ne 1 ] && { printf "[!] Usage: %s <iso_file.iso>\n" "$0"; exit 1; }
+# Confirm that our input is an iso by comparing the signature.
+! grep -q 'CD001' "$1" && { printf "[!] Wrong file type: '%s'\n" "$1"; exit 1; }
+
+tmp_dir=$(mktemp -d)
+
+# Mount ISO
+sudo mount -o loop "$1" "${tmp_dir}" 2>/dev/null
+
+# Generate a sha256 hash of all files within each directory(not going into subdirectories)
+# Pipe file checksums into another sha256sum process to generate a single checksum representing
+# the combined state of all files in the directory.Write final checksum to iso_checksums.txt.
+
+find "${tmp_dir}" -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r -d '' directory; do
+    # Generate a combined checksum of all files in the directory (not recursive)
+    checksum=$(sudo find "$directory" -maxdepth 1 -type f -exec sha256sum {} + | sha256sum | cut -d ' ' -f 1)
+
+    # Get the directory name
+    directory_name=$(basename "$directory")
+
+    # Write the directory name and its checksum to the output file
+   cat <<EOF >> iso_checksums.txt
+${directory_name}: '${checksum}'
+====================================================================
+
+EOF
+done
